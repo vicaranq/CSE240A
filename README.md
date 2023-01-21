@@ -25,9 +25,9 @@ Please make sure you do not copy a single line of code from any source.  Not fro
 
 ## Get Started
 
-As mentioned, we provide a starting framework to help you design your predictors. The source code (including some traces for testing) is in github and you can get it with `git clone https://github.com/prannoy/CSE240A.git`.
+As mentioned, we provide a starting framework to help you design your predictors. The source code (including some traces for testing) is in github and you can get it with `git clone https://github.com/rskpdev/CSE240A.git`.
 
-Alternatively, you can download it from [our github page](https://github.com/prannoy/CSE240A.git).
+Alternatively, you can download it from [our github page](https://github.com/rskpdev/CSE240A).
 
 You have the option to write your project in C, C++ or Python. We only provide a framework written in C and we strongly recommend you use it, primarily to ensure compatibility with our autograder.
 

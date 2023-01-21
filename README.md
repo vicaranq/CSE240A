@@ -4,7 +4,6 @@
   * [Introduction](#introduction)
   * [Code Integrity](#code-integrity)
   * [Get started](#get-started)
-  * [Working with Docker](#working-with-docker)
   * [Traces](#traces)
   * [Running your predictor](#running-your-predictor)
   * [Implementing the predictors](#implementing-the-predictors)
@@ -12,9 +11,7 @@
     - [Tournament](#tournament)
     - [Custom](#custom)
     - [Things to note](#things-to-note)
-  * [Grading](#grading)
-    - [Grading the custom predictor](#grading-the-custom-predictor)
-  * [Turn-in Instructions](#turn-in-instructions)
+
 
 ## Introduction
 

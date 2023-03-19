@@ -49,16 +49,25 @@ int size;
 // Tournament
 unsigned* local_BHT;
 unsigned* local_PHT;
+unsigned* chooser_PHT;
+unsigned chooser_result;
+unsigned pc_mask;
+unsigned local_BHT_idx;
+unsigned local_mask;
+unsigned local_PHT_idx;
 
 // train
 
 unsigned train_pred;
+unsigned local_pred;
+unsigned global_pred;
 
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
 void
 init_PHT(){
+  // The 'ghistoryBits' will be used to size the global and choice predictors
     // Initialize Pattern History Table (PHT) 
     // allocate size      
     size = 0x1<<ghistoryBits; // 2^ghistoryBits
@@ -70,10 +79,11 @@ init_PHT(){
 }
 void
 init_ghistory_mask(){
-    ghistory_mask = (0 << sizeof(unsigned) * 8 -1)  |  (0x1 << ghistoryBits) - 0x1 ; 
+    ghistory_mask =  (0x1 << ghistoryBits) - 0x1 ; 
 }
 void 
 init_BHT(){
+  // 'lhistoryBits' and 'pcIndexBits' will be used to size the local predictor
     size = 0x1<<pcIndexBits; // 2^number of bits in PC index
     local_BHT = (unsigned*) malloc(sizeof(unsigned)*size);
     for(int i=0;i<size;i++){
@@ -82,12 +92,43 @@ init_BHT(){
 }
 void
 init_local_PHT(){
+  // 'lhistoryBits' and 'pcIndexBits' will be used to size the local predictor
     size = 0x1<<lhistoryBits; // 2^number of bits in local history
     local_PHT = (unsigned*) malloc(sizeof(unsigned)*size);
     for(int i=0;i<size;i++){
       local_PHT[i] = WN; 
     }    
 }
+void
+init_chooser(){
+  // The 'ghistoryBits' will be used to size the global and choice predictors
+    size = 0x1<<ghistoryBits; 
+    chooser_PHT = (unsigned*) malloc(sizeof(unsigned)*size);
+    for(int i=0;i<size;i++){
+      chooser_PHT[i] = WN; 
+    }    
+}
+unsigned 
+get_local_prediction(uint32_t pc){
+
+  pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
+  local_BHT_idx = pc & pc_mask;
+  local_mask = (0x1 << lhistoryBits) - 0x1;
+  // local BHT
+  local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;          
+  // local PHT
+  pred = local_PHT[local_PHT_idx];  
+  return pred;
+}
+unsigned
+get_global_prediction(uint32_t pc){  
+  ghistory_masked = global_history_table & ghistory_mask; 
+  pred = pattern_history_table[ghistory_masked];
+  return pred;
+}
+
+
+
 // Initialize the predictor
 //
 void
@@ -115,6 +156,10 @@ init_predictor()
         // // ghistory_mask = (0x1 << ghistoryBits) - 0x1 ; 
         // ghistory_mask = (0 << sizeof(unsigned) * 8 -1)  |  (0x1 << ghistoryBits) - 0x1 ; 
         break;
+    case CUSTOM:
+        ghistoryBits = 15;
+        lhistoryBits = 10;
+        pcIndexBits = 10;
     case TOURNAMENT:
         // GLOBAL PREDICTOR
         init_PHT(); // --> pattern_history_table
@@ -125,9 +170,9 @@ init_predictor()
         init_local_PHT(); // local Pattern History Table --> local_PHT
 
         // CHOOSER
-        init_chooser(); 
+        init_chooser(); //-->chooser_PHT
 
-    case CUSTOM:
+    // case CUSTOM:
     default:
       break;
   }
@@ -152,10 +197,8 @@ make_prediction(uint32_t pc)
     case GSHARE:
         // The Gshare predictor is characterized by XORing the global history register with the lower bits (same length as the global history) of 
         // the branch's address. This XORed value is then used to index into a 1D BHT of 2-bit predictors.
-
         // 1. Make mask of 1s for ghistoryBits bits
         // ghistoryMask = (0x1 << ghistoryBits) - 0x1 ; // 2^n-1 where n is number of bits used for Global History <- moved to init
-
         // 2. XOR PC and global history registry + keep out bits out of the mask
         pc_masked = pc &  ghistory_mask;
         ghistory_masked = global_history_table & ghistory_mask;
@@ -169,11 +212,71 @@ make_prediction(uint32_t pc)
 
     case TOURNAMENT:
       // Alpha 21264 with 2-bit predictor
-
-      // The 'ghistoryBits' will be used to size the global and choice predictors
-
+      // The 'ghistoryBits' will be used to size the global and choice predictors        
       // 'lhistoryBits' and 'pcIndexBits' will be used to size the local predictor
+
+      // get index to chooser_PHT
+      ghistory_masked = global_history_table & ghistory_mask; 
+      // get result of chooser_PHT
+      chooser_result = chooser_PHT[ghistory_masked];
+
+      if (chooser_result == 0 || chooser_result == 1){
+        // pc masked
+        pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
+        local_BHT_idx = pc & pc_mask;
+        local_mask = (0x1 << lhistoryBits) - 0x1;
+        // local BHT
+        local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;          
+        // local PHT
+        pred = local_PHT[local_PHT_idx];
+
+      }else {
+        // global
+        pred = pattern_history_table[ghistory_masked];
+      }
+      // handle pred
+      if (pred >= 2) {
+        return TAKEN;
+      }else {
+        return NOTTAKEN; 
+      }
+
     case CUSTOM:
+      ghistory_masked = global_history_table & ghistory_mask; 
+      // get result of chooser_PHT
+      chooser_result = chooser_PHT[ghistory_masked];
+
+      if (chooser_result == 0 || chooser_result == 1){
+        // pc masked
+        
+        if (chooser_result == 1){
+          pc_mask =  (0x1 << pcIndexBits) - 0x1 ; 
+          // pc_mask = ((0x1 << pcIndexBits) - 0x1) & (pc_mask << 2 | 0x0); //NEW
+          pc_mask =  (pc_mask << 2) | 0x0 ; //NEW
+        } else {
+          pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  
+        }
+        local_BHT_idx = pc & pc_mask;
+        local_mask = (0x1 << lhistoryBits) - 0x1;
+        // local BHT
+        local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;          
+        // local PHT
+        pred = local_PHT[local_PHT_idx];
+
+      }else {
+        // global
+        if (chooser_result == 2){
+          ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
+        }
+        pred = pattern_history_table[ghistory_masked];
+      }
+      // handle pred
+      if (pred >= 2) {
+        return TAKEN;
+      }else {
+        return NOTTAKEN; 
+      }
+
     default:
       break;
   }
@@ -198,6 +301,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
   switch (bpType) {
     case STATIC:
       break;
+
     case GSHARE:
         pc_masked = pc &  ghistory_mask;
         ghistory_masked = global_history_table & ghistory_mask;
@@ -217,8 +321,107 @@ train_predictor(uint32_t pc, uint8_t outcome)
         }
         // Update GHT: shift left 1 bit and insert appropriate bit to the right
         global_history_table = global_history_table << 1 | outcome; 
-            case TOURNAMENT:
+        break; 
+
+    case TOURNAMENT:
+        ghistory_masked = global_history_table & ghistory_mask; 
+        pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
+        local_BHT_idx = pc & pc_mask;
+        local_mask = (0x1 << lhistoryBits) - 0x1;
+        // local BHT
+        local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;           
+        
+        local_pred = get_local_prediction(pc);
+        global_pred = get_global_prediction(pc);
+
+        // UPDATE CHOOSER
+        // if local pred is right, update chooser
+        if (outcome != global_pred && outcome == local_pred){
+          if (chooser_PHT[ghistory_masked] != SN) {
+            chooser_PHT[ghistory_masked]--;
+          }
+        }else if (outcome == global_pred && outcome != local_pred){ // if global pred is right
+          if (chooser_PHT[ghistory_masked] != ST) {
+            chooser_PHT[ghistory_masked]++;
+          }
+        }
+
+        // UPDATE GLOBAL AND LOCAL
+        if (outcome == TAKEN){
+          // update global
+          if (pattern_history_table[ghistory_masked] != ST) {
+            pattern_history_table[ghistory_masked]++;
+          }
+          //update local
+          if (local_PHT[local_PHT_idx] != ST ){
+            local_PHT[local_PHT_idx]++;
+          }          
+        }else{
+          // update global
+          if (pattern_history_table[ghistory_masked] != SN) {
+            pattern_history_table[ghistory_masked]--;
+          }
+          //update local
+          if (local_PHT[local_PHT_idx] != SN ){
+            local_PHT[local_PHT_idx]--;
+          }            
+        }      
+        // Update GHT and local BHT: shift left 1 bit and insert appropriate bit to the right
+        global_history_table =  (global_history_table << 1 | outcome) ; 
+        local_BHT[local_BHT_idx] =  (local_BHT[local_BHT_idx] << 1 | outcome) ;
+        break;   
     case CUSTOM:
+        ghistory_masked = global_history_table & ghistory_mask; 
+        pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
+        local_BHT_idx = pc & pc_mask;
+        local_mask = (0x1 << lhistoryBits) - 0x1;
+        // local BHT
+        local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;           
+        
+        local_pred = get_local_prediction(pc);
+        global_pred = get_global_prediction(pc);
+
+        // UPDATE CHOOSER
+        // if local pred is right, update chooser
+        if (outcome != global_pred && outcome == local_pred){
+          if (chooser_PHT[ghistory_masked] != SN) {
+            chooser_PHT[ghistory_masked]--;
+          }
+        }else if (outcome == global_pred && outcome != local_pred){ // if global pred is right
+          if (chooser_PHT[ghistory_masked] != ST) {
+            chooser_PHT[ghistory_masked]++;
+          }
+        }
+
+        // UPDATE GLOBAL AND LOCAL
+        if (outcome == TAKEN){
+          // update global
+          if (pattern_history_table[ghistory_masked] != ST) {
+            if (pattern_history_table[ghistory_masked]  == WT){
+                ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
+                pattern_history_table[ghistory_masked]++;
+            }else {
+                pattern_history_table[ghistory_masked]++;
+            }
+          }
+          //update local
+          if (local_PHT[local_PHT_idx] != ST ){
+            local_PHT[local_PHT_idx]++;
+          }          
+        }else{
+          // update global
+          if (pattern_history_table[ghistory_masked] != SN) {
+            pattern_history_table[ghistory_masked]--;
+          }
+          //update local
+          if (local_PHT[local_PHT_idx] != SN ){
+            local_PHT[local_PHT_idx]--;
+          }            
+        }      
+        // Update GHT and local BHT: shift left 1 bit and insert appropriate bit to the right
+        global_history_table =  (global_history_table << 1 | outcome) ; 
+        local_BHT[local_BHT_idx] =  (local_BHT[local_BHT_idx] << 1 | outcome) ;
+        break;     
     default:
       break;
   }  

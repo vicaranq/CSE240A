@@ -242,20 +242,27 @@ make_prediction(uint32_t pc)
       }
 
     case CUSTOM:
-      ghistory_masked = global_history_table & ghistory_mask; 
+      ghistory_masked = (global_history_table >> 3 ) & ghistory_mask;
+      pc_masked = (pc << 3) &  ghistory_mask; // NEW 
+      // ghistory_masked = (global_history_table ) & ghistory_mask;
+      // pc_masked = (pc) &  ghistory_mask; // NEW 
+      ghistory_masked = ghistory_masked ^ pc_masked ; // NEW
+
       // get result of chooser_PHT
       chooser_result = chooser_PHT[ghistory_masked];
 
-      if (chooser_result == 0 || chooser_result == 1){
+      if (chooser_result == SN || chooser_result == WN){
         // pc masked
         
-        if (chooser_result == 1){
-          pc_mask =  (0x1 << pcIndexBits) - 0x1 ; 
-          // pc_mask = ((0x1 << pcIndexBits) - 0x1) & (pc_mask << 2 | 0x0); //NEW
-          pc_mask =  (pc_mask << 2) | 0x0 ; //NEW
-        } else {
-          pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  
-        }
+        // if (chooser_result == WN){
+        //   pc_mask =  (0x1 << pcIndexBits) - 0x1 ; 
+        //   // pc_mask = ((0x1 << pcIndexBits) - 0x1) & (pc_mask << 2 | 0x0); //NEW
+        //   pc_mask =  (pc_mask << 2) | 0x0 ; //NEW
+        // } else {
+        //   pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  
+        // }
+        pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  
+        
         local_BHT_idx = pc & pc_mask;
         local_mask = (0x1 << lhistoryBits) - 0x1;
         // local BHT
@@ -263,11 +270,13 @@ make_prediction(uint32_t pc)
         // local PHT
         pred = local_PHT[local_PHT_idx];
 
-      }else {
+      }else { // TAKEN
         // global
-        if (chooser_result == 2){
-          ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
-        }
+        // if (chooser_result == WT){
+        //   ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
+        // }else {
+        //   ghistory_mask =  (0x1 << ghistoryBits) - 0x1 ;
+        // }
         pred = pattern_history_table[ghistory_masked];
       }
       // handle pred
@@ -371,15 +380,21 @@ train_predictor(uint32_t pc, uint8_t outcome)
         local_BHT[local_BHT_idx] =  (local_BHT[local_BHT_idx] << 1 | outcome) ;
         break;   
     case CUSTOM:
-        ghistory_masked = global_history_table & ghistory_mask; 
-        pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
-        local_BHT_idx = pc & pc_mask;
-        local_mask = (0x1 << lhistoryBits) - 0x1;
-        // local BHT
-        local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;           
+        ghistory_masked = (global_history_table >> 3 ) & ghistory_mask;
+        pc_masked = (pc << 3) &  ghistory_mask; // NEW 
+        // ghistory_masked = (global_history_table ) & ghistory_mask;
+        // pc_masked = (pc) &  ghistory_mask; // NEW         
+        ghistory_masked = (ghistory_masked) ^ (pc_masked) ; // NEW        
+        // pc_mask =  (0x1 << pcIndexBits) - 0x1 ;  //0 << sizeof(unsigned) * 8 -1)  | 
+        // local_BHT_idx = pc & pc_mask;
+        // local_mask = (0x1 << lhistoryBits) - 0x1;
+        // // local BHT
+        // local_PHT_idx = local_BHT[local_BHT_idx] & local_mask;           
         
         local_pred = get_local_prediction(pc);
-        global_pred = get_global_prediction(pc);
+        // global_pred = get_global_prediction(pc);
+        // ghistory_masked = global_history_table & ghistory_mask; 
+        global_pred = pattern_history_table[ghistory_masked];
 
         // UPDATE CHOOSER
         // if local pred is right, update chooser
@@ -397,23 +412,31 @@ train_predictor(uint32_t pc, uint8_t outcome)
         if (outcome == TAKEN){
           // update global
           if (pattern_history_table[ghistory_masked] != ST) {
-            if (pattern_history_table[ghistory_masked]  == WT){
-                ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
-                pattern_history_table[ghistory_masked]++;
-            }else {
-                pattern_history_table[ghistory_masked]++;
-            }
+            // if (pattern_history_table[ghistory_masked]  == WT){
+            //     ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
+            //     pattern_history_table[ghistory_masked]++;
+            // }else {
+            //     pattern_history_table[ghistory_masked]++;
+            // }
+            pattern_history_table[ghistory_masked]++;
           }
           //update local
           if (local_PHT[local_PHT_idx] != ST ){
             local_PHT[local_PHT_idx]++;
           }          
-        }else{
+        }else{ // NOT TAKEN
           // update global
           if (pattern_history_table[ghistory_masked] != SN) {
             pattern_history_table[ghistory_masked]--;
+            // if (pattern_history_table[ghistory_masked]  == WT){
+            //     ghistory_mask = ghistory_mask >> 2;// NEW shrink by 2 bits
+            //     pattern_history_table[ghistory_masked]--;
+            // }else {
+            //     pattern_history_table[ghistory_masked]--;
+            // }            
           }
           //update local
+
           if (local_PHT[local_PHT_idx] != SN ){
             local_PHT[local_PHT_idx]--;
           }            
